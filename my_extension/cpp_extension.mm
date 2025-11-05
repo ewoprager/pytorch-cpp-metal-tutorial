@@ -12,9 +12,8 @@ static inline id<MTLBuffer> getMTLBufferStorage(const torch::Tensor& tensor) {
 torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::string& shaderFilePath) {
 
     // Check that device is MPS
-    if (a.device().type() != torch::kMPS || b.device().type() != torch::kMPS) {
-        throw std::runtime_error("Error: tensors must be on MPS device.");
-    }
+    TORCH_INTERNAL_ASSERT(a.device().type() == torch::kMPS)
+    TORCH_INTERNAL_ASSERT(b.device().type() == torch::kMPS)
 
     // Check that tensors are contiguous
     // Contiguous means that the memory is contiguous
@@ -26,7 +25,7 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::str
 
     // Create an empty tensor on the MPS device to hold the result
     torch::Tensor result = torch::empty({numElements}, torch::TensorOptions().dtype(torch::kFloat).device(torch::kMPS));
-    
+
     @autoreleasepool{
         // Get the default Metal device
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -35,7 +34,7 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::str
         NSError* error = nil;
         NSString* shaderSource = [
             NSString stringWithContentsOfFile:[NSString stringWithUTF8String:shaderFilePath.c_str()]
-            encoding:NSUTF8StringEncoding 
+            encoding:NSUTF8StringEncoding
             error:&error];
         if (error) {
             throw std::runtime_error("Failed to load Metal shader: " + std::string(error.localizedDescription.UTF8String));
@@ -69,9 +68,9 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::str
             [encoder setComputePipelineState:pipelineState];
 
             // Set the buffers
-            [encoder setBuffer:getMTLBufferStorage(a) offset:a.storage_offset() a.element_size() atIndex:0];
-            [encoder setBuffer:getMTLBufferStorage(b) offset:b.storage_offset() b.element_size() atIndex:1];
-            [encoder setBuffer:getMTLBufferStorage(result) offset:result.storage_offset() result.element_size() atIndex:2];
+            [encoder setBuffer:getMTLBufferStorage(a) offset:a.storage_offset() attributeStride:a.element_size() atIndex:0];
+            [encoder setBuffer:getMTLBufferStorage(b) offset:b.storage_offset() attributeStride:b.element_size() atIndex:1];
+            [encoder setBuffer:getMTLBufferStorage(result) offset:result.storage_offset() attributeStride:result.element_size() atIndex:2];
 
             // Dispatch the compute kernel
             MTLSize gridSize = MTLSizeMake(numElements, 1, 1);
@@ -87,7 +86,7 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::str
             torch::mps::commit();
         });
     }
-    
+
     return result;
 }
 

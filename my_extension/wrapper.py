@@ -1,12 +1,13 @@
 import torch
 import my_extension_cpp
+from importlib import resources
 
 # Define a wrapper function
 def add_tensors(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
     # Find the shader file path
-    import pkg_resources
-    shader_file_path = pkg_resources.resource_filename('my_extension', 'add_tensors.metal')
+    with resources.as_file(resources.files(__package__) / "shaders" / "add_tensors.metal") as metallib_path:
+        shader_file_path = str(metallib_path)
 
     # Call the C++ function
     return my_extension_cpp.add_tensors_metal(a, b, shader_file_path)
