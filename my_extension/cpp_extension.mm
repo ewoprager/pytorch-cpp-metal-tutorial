@@ -25,7 +25,8 @@ torch::Tensor add_tensors_metal(const torch::Tensor &a, const torch::Tensor &b, 
     int numElements = aContiguous.numel();
 
     // Create an empty tensor on the MPS device to hold the result
-    torch::Tensor resultFlat = torch::empty({numElements}, torch::TensorOptions().dtype(torch::kFloat).device(torch::kMPS));
+    torch::Tensor resultFlat = torch::empty({numElements},
+                                            torch::TensorOptions().dtype(torch::kFloat).device(torch::kMPS));
 
     @autoreleasepool {
         // Get the default Metal device
@@ -34,7 +35,8 @@ torch::Tensor add_tensors_metal(const torch::Tensor &a, const torch::Tensor &b, 
         NSError *error = nil;
 
         // Load the shader binary
-        id <MTLLibrary> library = [device newLibraryWithFile:[NSString stringWithUTF8String:shaderBinaryPath.c_str()] error:&error];
+        NSURL *libURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:shaderBinaryPath.c_str()]];
+        id <MTLLibrary> library = [device newLibraryWithURL:libURL error:&error];
         if (!library) {
             throw std::runtime_error(
                     "Error compiling Metal shader: " + std::string(error.localizedDescription.UTF8String));
@@ -62,11 +64,11 @@ torch::Tensor add_tensors_metal(const torch::Tensor &a, const torch::Tensor &b, 
             [encoder setComputePipelineState:pipelineState];
 
             // Set the buffers
-            [encoder setBuffer:getMTLBufferStorage(
+            [encoder                                                                                            setBuffer:getMTLBufferStorage(
                     aContiguous) offset:aContiguous.storage_offset() attributeStride:aContiguous.element_size() atIndex:0];
-            [encoder setBuffer:getMTLBufferStorage(
+            [encoder                                                                                            setBuffer:getMTLBufferStorage(
                     bContiguous) offset:aContiguous.storage_offset() attributeStride:aContiguous.element_size() atIndex:1];
-            [encoder setBuffer:getMTLBufferStorage(
+            [encoder                                                                                         setBuffer:getMTLBufferStorage(
                     resultFlat) offset:resultFlat.storage_offset() attributeStride:resultFlat.element_size() atIndex:2];
 
             // Dispatch the compute kernel
@@ -88,5 +90,13 @@ torch::Tensor add_tensors_metal(const torch::Tensor &a, const torch::Tensor &b, 
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("add_tensors_metal", &add_tensors_metal, "Add two tensors using Metal");
+
+}
+
+TORCH_LIBRARY(my_extension_cpp, m) {
+    m.def("add_tensors_metal(Tensor a, Tensor b, str shader_binary) -> Tensor");
+}
+
+TORCH_LIBRARY_IMPL(my_extension_cpp, MPS, m) {
+    m.impl("add_tensors_metal", &add_tensors_metal);
 }

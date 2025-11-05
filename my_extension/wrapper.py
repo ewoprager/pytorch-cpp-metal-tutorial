@@ -1,6 +1,8 @@
+from importlib import resources
+
 import torch
 import my_extension_cpp
-from importlib import resources
+
 
 # Define a wrapper function
 def add_tensors(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -13,4 +15,4 @@ def add_tensors(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         shader_binary_path = str(metallib_path)
 
     # Call the C++ function
-    return my_extension_cpp.add_tensors_metal(a, b, shader_binary_path)
+    return torch.ops.my_extension_cpp.add_tensors_metal.default(a, b, shader_binary_path)
