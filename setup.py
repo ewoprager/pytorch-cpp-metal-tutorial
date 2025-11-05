@@ -28,6 +28,10 @@ def compile_metal_shaders(shader_dir: pathlib.Path, output_dir: pathlib.Path) ->
     metallib = output_dir / "default.metallib"
     print("Linking metallib...")
     subprocess.check_call(["xcrun", "-sdk", "macosx", "metallib", *air_files, "-o", str(metallib)])
+
+    for air_file in air_files:
+        pathlib.Path(air_file).unlink()
+
     return metallib
 
 

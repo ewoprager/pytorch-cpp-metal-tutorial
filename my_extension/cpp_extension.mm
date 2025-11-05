@@ -4,73 +4,70 @@
 #include <iostream>
 
 // Helper function to retrieve the `MTLBuffer` from a `torch::Tensor`.
-static inline id<MTLBuffer> getMTLBufferStorage(const torch::Tensor& tensor) {
-  return __builtin_bit_cast(id<MTLBuffer>, tensor.storage().data());
+static inline id <MTLBuffer> getMTLBufferStorage(const torch::Tensor &tensor) {
+    return __builtin_bit_cast(id < MTLBuffer > , tensor.storage().data());
 }
 
 // Define a function to add tensors using Metal
-torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::string& shaderFilePath) {
+torch::Tensor add_tensors_metal(const torch::Tensor &a, const torch::Tensor &b, const std::string &shaderBinaryPath) {
 
     // Check that device is MPS
     TORCH_INTERNAL_ASSERT(a.device().type() == torch::kMPS)
     TORCH_INTERNAL_ASSERT(b.device().type() == torch::kMPS)
+    TORCH_CHECK(a.sizes() == b.sizes())
 
     // Check that tensors are contiguous
     // Contiguous means that the memory is contiguous
-    a = a.contiguous();
-    b = b.contiguous();
+    torch::Tensor aContiguous = a.contiguous();
+    torch::Tensor bContiguous = b.contiguous();
 
     // Get the total number of elements in the tensors
-    int numElements = a.numel();
+    int numElements = aContiguous.numel();
 
     // Create an empty tensor on the MPS device to hold the result
-    torch::Tensor result = torch::empty({numElements}, torch::TensorOptions().dtype(torch::kFloat).device(torch::kMPS));
+    torch::Tensor resultFlat = torch::empty({numElements}, torch::TensorOptions().dtype(torch::kFloat).device(torch::kMPS));
 
-    @autoreleasepool{
+    @autoreleasepool {
         // Get the default Metal device
-        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        id <MTLDevice> device = MTLCreateSystemDefaultDevice();
 
-        // Load the Metal shader from the specified path
-        NSError* error = nil;
-        NSString* shaderSource = [
-            NSString stringWithContentsOfFile:[NSString stringWithUTF8String:shaderFilePath.c_str()]
-            encoding:NSUTF8StringEncoding
-            error:&error];
-        if (error) {
-            throw std::runtime_error("Failed to load Metal shader: " + std::string(error.localizedDescription.UTF8String));
-        }
+        NSError *error = nil;
 
-        // Compile the Metal shader source
-        id<MTLLibrary> library = [device newLibraryWithSource:shaderSource options:nil error:&error];
+        // Load the shader binary
+        id <MTLLibrary> library = [device newLibraryWithFile:[NSString stringWithUTF8String:shaderBinaryPath.c_str()] error:&error];
         if (!library) {
-            throw std::runtime_error("Error compiling Metal shader: " + std::string(error.localizedDescription.UTF8String));
+            throw std::runtime_error(
+                    "Error compiling Metal shader: " + std::string(error.localizedDescription.UTF8String));
         }
 
-        id<MTLFunction> function = [library newFunctionWithName:@"addTensors"];
+        id <MTLFunction> function = [library newFunctionWithName:@"addTensors"];
         if (!function) {
             throw std::runtime_error("Error: Metal function addTensors not found.");
         }
 
         // Create a Metal compute pipeline state
-        id<MTLComputePipelineState> pipelineState = [device newComputePipelineStateWithFunction:function error:nil];
+        id <MTLComputePipelineState> pipelineState = [device newComputePipelineStateWithFunction:function error:nil];
 
         // Get PyTorch's command queue
         dispatch_queue_t serialQueue = torch::mps::get_dispatch_queue();
 
         // Get PyTorch's Metal command buffer
-        id<MTLCommandBuffer> commandBuffer = torch::mps::get_command_buffer();
+        id <MTLCommandBuffer> commandBuffer = torch::mps::get_command_buffer();
 
-        dispatch_sync(serialQueue, ^(){
+        dispatch_sync(serialQueue, ^() {
             // Create a compute command encoder
-            id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+            id <MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
 
             // Set the compute pipeline state
             [encoder setComputePipelineState:pipelineState];
 
             // Set the buffers
-            [encoder setBuffer:getMTLBufferStorage(a) offset:a.storage_offset() attributeStride:a.element_size() atIndex:0];
-            [encoder setBuffer:getMTLBufferStorage(b) offset:b.storage_offset() attributeStride:b.element_size() atIndex:1];
-            [encoder setBuffer:getMTLBufferStorage(result) offset:result.storage_offset() attributeStride:result.element_size() atIndex:2];
+            [encoder setBuffer:getMTLBufferStorage(
+                    aContiguous) offset:aContiguous.storage_offset() attributeStride:aContiguous.element_size() atIndex:0];
+            [encoder setBuffer:getMTLBufferStorage(
+                    bContiguous) offset:aContiguous.storage_offset() attributeStride:aContiguous.element_size() atIndex:1];
+            [encoder setBuffer:getMTLBufferStorage(
+                    resultFlat) offset:resultFlat.storage_offset() attributeStride:resultFlat.element_size() atIndex:2];
 
             // Dispatch the compute kernel
             MTLSize gridSize = MTLSizeMake(numElements, 1, 1);
@@ -87,7 +84,7 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::str
         });
     }
 
-    return result;
+    return resultFlat.view(a.sizes());
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {

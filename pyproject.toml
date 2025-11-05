@@ -22,7 +22,7 @@ build-backend = "setuptools.build_meta"
 # the project is re-built when any of the following globbed files are modified
 cache-keys = [
     { file = "my_extension/cpp_extension.mm" },
-    { file = "my_extension/add_tensors.metal" },
+    { file = "my_extension/shaders/*.metal" },
     { file = "pyproject.toml" },
     { file = "setup.py" },
 ]
