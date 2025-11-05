@@ -1,0 +1,28 @@
+[project]
+name = "pytorch-cpp-metal-tutorial"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = "==3.11.13"
+dependencies = [
+    "numpy==1.26.2",
+    "torch==2.1.1"
+]
+
+[build-system]
+requires = [
+    "numpy==1.26.2",
+    "setuptools==68.0.0",
+    "torch==2.1.1"
+]
+build-backend = "setuptools.build_meta"
+
+
+[tool.uv]
+# the project is re-built when any of the following globbed files are modified
+cache-keys = [
+    { file = "my_extension/cpp_extension.mm" },
+    { file = "my_extension/add_tensors.metal" },
+    { file = "pyproject.toml" },
+    { file = "setup.py" },
+]

@@ -4,3 +4,7 @@ __pycache__/
 *.so
 .DS_Store
 dist/
+.venv/
+**/cmake-build-*/
+my_extension/metal/
+**/.idea/
