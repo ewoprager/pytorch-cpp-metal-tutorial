@@ -3,13 +3,15 @@
 #include <Foundation/Foundation.h>
 #include <iostream>
 
+#include "metal/default_metallib.h"
+
 // Helper function to retrieve the `MTLBuffer` from a `torch::Tensor`.
 static inline id <MTLBuffer> getMTLBufferStorage(const torch::Tensor &tensor) {
     return __builtin_bit_cast(id < MTLBuffer > , tensor.storage().data());
 }
 
 // Define a function to add tensors using Metal
-torch::Tensor add_tensors_metal(const torch::Tensor &a, const torch::Tensor &b, const std::string &shaderBinaryPath) {
+torch::Tensor add_tensors_metal(const torch::Tensor &a, const torch::Tensor &b) {
 
     // Check that device is MPS
     TORCH_INTERNAL_ASSERT(a.device().type() == torch::kMPS)
@@ -35,8 +37,10 @@ torch::Tensor add_tensors_metal(const torch::Tensor &a, const torch::Tensor &b, 
         NSError *error = nil;
 
         // Load the shader binary
-        NSURL *libURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:shaderBinaryPath.c_str()]];
-        id <MTLLibrary> library = [device newLibraryWithURL:libURL error:&error];
+        dispatch_data_t shaderBinary = dispatch_data_create(my_extension_metal_default_metallib,
+                                                            my_extension_metal_default_metallib_len, NULL,
+                                                            DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+        id <MTLLibrary> library = [device newLibraryWithData:shaderBinary error:&error];
         if (!library) {
             throw std::runtime_error(
                     "Error compiling Metal shader: " + std::string(error.localizedDescription.UTF8String));
@@ -64,12 +68,18 @@ torch::Tensor add_tensors_metal(const torch::Tensor &a, const torch::Tensor &b, 
             [encoder setComputePipelineState:pipelineState];
 
             // Set the buffers
-            [encoder                                                                                            setBuffer:getMTLBufferStorage(
-                    aContiguous) offset:aContiguous.storage_offset() attributeStride:aContiguous.element_size() atIndex:0];
-            [encoder                                                                                            setBuffer:getMTLBufferStorage(
-                    bContiguous) offset:aContiguous.storage_offset() attributeStride:aContiguous.element_size() atIndex:1];
-            [encoder                                                                                         setBuffer:getMTLBufferStorage(
-                    resultFlat) offset:resultFlat.storage_offset() attributeStride:resultFlat.element_size() atIndex:2];
+            [encoder setBuffer:getMTLBufferStorage(aContiguous)
+                        offset:aContiguous.storage_offset()
+               attributeStride:aContiguous.element_size()
+                       atIndex:0];
+            [encoder setBuffer:getMTLBufferStorage(bContiguous)
+                        offset:aContiguous.storage_offset()
+               attributeStride:aContiguous.element_size()
+                       atIndex:1];
+            [encoder setBuffer:getMTLBufferStorage(resultFlat)
+                        offset:resultFlat.storage_offset()
+               attributeStride:resultFlat.element_size()
+                       atIndex:2];
 
             // Dispatch the compute kernel
             MTLSize gridSize = MTLSizeMake(numElements, 1, 1);
@@ -94,7 +104,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 }
 
 TORCH_LIBRARY(my_extension_cpp, m) {
-    m.def("add_tensors_metal(Tensor a, Tensor b, str shader_binary) -> Tensor");
+    m.def("add_tensors_metal(Tensor a, Tensor b) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(my_extension_cpp, MPS, m) {

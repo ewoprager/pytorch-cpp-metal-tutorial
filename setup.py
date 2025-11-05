@@ -15,6 +15,7 @@ def compile_metal_shaders(shader_dir: pathlib.Path, output_dir: pathlib.Path) ->
     :param output_dir:
     :return:
     """
+    # compile each .metal shader into a .air file
     output_dir.mkdir(exist_ok=True, parents=True)
     air_files = []
     for source in shader_dir.iterdir():
@@ -25,12 +26,21 @@ def compile_metal_shaders(shader_dir: pathlib.Path, output_dir: pathlib.Path) ->
         subprocess.check_call(["xcrun", "-sdk", "macosx", "metal", "-c", str(source), "-o", str(air)])
         air_files.append(str(air))
 
+    # compile air files into a single metallib library
     metallib = output_dir / "default.metallib"
     print("Linking metallib...")
     subprocess.check_call(["xcrun", "-sdk", "macosx", "metallib", *air_files, "-o", str(metallib)])
 
+    # clean up air files
     for air_file in air_files:
         pathlib.Path(air_file).unlink()
+
+    # convert the library into a C-array
+    header = output_dir / "default_metallib.h"
+    header.write_text(subprocess.run(["xxd", "-i", str(metallib)], capture_output=True, text=True, check=True).stdout)
+
+    # cleaning up library
+    metallib.unlink()
 
     return metallib
 
